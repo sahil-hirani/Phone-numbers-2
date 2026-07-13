@@ -1,13 +1,14 @@
 import mongoose, { Schema, Document } from 'mongoose';
 
-export interface IAgent extends Document {
+export interface IAdmin extends Document {
   username: string;
   password: string;
   tokenVersion: number;
   createdAt: Date;
+  updatedAt: Date;
 }
 
-const AgentSchema = new Schema<IAgent>(
+const AdminSchema = new Schema<IAdmin>(
   {
     username: { type: String, required: true, unique: true, trim: true, lowercase: true },
     password: { type: String, required: true },
@@ -16,5 +17,5 @@ const AgentSchema = new Schema<IAgent>(
   { timestamps: true }
 );
 
-export default (mongoose.models.Agent as mongoose.Model<IAgent>) ||
-  mongoose.model<IAgent>('Agent', AgentSchema);
+export default (mongoose.models.Admin as mongoose.Model<IAdmin>) ||
+  mongoose.model<IAdmin>('Admin', AdminSchema);

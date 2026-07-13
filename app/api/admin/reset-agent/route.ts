@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import connectDB from '@/lib/mongodb';
 import PhoneNumber from '@/models/PhoneNumber';
+import { verifyAdminPassword } from '@/lib/admin';
 
 export async function POST(req: NextRequest) {
   try {
@@ -25,10 +26,8 @@ export async function POST(req: NextRequest) {
     }
 
     // Verify admin password
-    const adminPassword = process.env.ADMIN_PASSWORD || 'admin123';
-    
-    // Check if provided password matches admin password (comparing plain text since we store in env)
-    if (password !== adminPassword) {
+    const valid = await verifyAdminPassword(password);
+    if (!valid) {
       return NextResponse.json({ error: 'Invalid admin password' }, { status: 401 });
     }
 

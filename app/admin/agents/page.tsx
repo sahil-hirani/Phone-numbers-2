@@ -27,6 +27,11 @@ export default function AgentsPage() {
   const [success, setSuccess] = useState('');
   const [showPass, setShowPass] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [passwordAgent, setPasswordAgent] = useState<Agent | null>(null);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordLoading, setPasswordLoading] = useState(false);
+  const [passwordError, setPasswordError] = useState('');
 
   async function fetchAgents() {
     setFetching(true);
@@ -72,6 +77,50 @@ export default function AgentsPage() {
     await fetch('/api/agents/' + id, { method: 'DELETE' });
     setDeleteConfirm(null);
     fetchAgents();
+  }
+
+  function openPasswordModal(agent: Agent) {
+    setPasswordAgent(agent);
+    setNewPassword('');
+    setConfirmPassword('');
+    setPasswordError('');
+  }
+
+  function closePasswordModal() {
+    setPasswordAgent(null);
+    setNewPassword('');
+    setConfirmPassword('');
+    setPasswordError('');
+  }
+
+  async function handlePasswordChange(e: React.FormEvent) {
+    e.preventDefault();
+    setPasswordError('');
+
+    if (newPassword.length < 6) {
+      setPasswordError('Password must be at least 6 characters');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setPasswordError('Passwords do not match');
+      return;
+    }
+
+    setPasswordLoading(true);
+    const res = await fetch('/api/agents/' + passwordAgent!._id + '/password', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ newPassword }),
+    });
+    const data = await res.json();
+    setPasswordLoading(false);
+
+    if (res.ok) {
+      setSuccess(data.message || 'Password updated successfully');
+      closePasswordModal();
+    } else {
+      setPasswordError(data.error || 'Failed to update password');
+    }
   }
 
   return (
@@ -166,15 +215,23 @@ export default function AgentsPage() {
                       <td className="px-6 py-4 text-emerald-600 font-semibold">{stat.connected || 0}</td>
                       <td className="px-6 py-4 text-rose-600 font-semibold">{stat.not_connected || 0}</td>
                       <td className="px-6 py-4">
-                        {deleteConfirm === agent._id ? (
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs text-gray-500">Are you sure?</span>
-                            <button onClick={() => handleDelete(agent._id)} className="px-3 py-1 bg-red-600 text-white text-xs rounded-lg hover:bg-red-700 font-medium">Yes, Delete</button>
-                            <button onClick={() => setDeleteConfirm(null)} className="px-3 py-1 bg-gray-200 text-gray-700 text-xs rounded-lg hover:bg-gray-300 font-medium">Cancel</button>
-                          </div>
-                        ) : (
-                          <button onClick={() => setDeleteConfirm(agent._id)} className="px-3 py-1.5 text-red-600 border border-red-200 rounded-lg hover:bg-red-50 text-xs font-semibold transition">Delete</button>
-                        )}
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => openPasswordModal(agent)}
+                            className="px-3 py-1.5 text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-50 text-xs font-semibold transition"
+                          >
+                            Change Password
+                          </button>
+                          {deleteConfirm === agent._id ? (
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-gray-500">Are you sure?</span>
+                              <button onClick={() => handleDelete(agent._id)} className="px-3 py-1 bg-red-600 text-white text-xs rounded-lg hover:bg-red-700 font-medium">Yes, Delete</button>
+                              <button onClick={() => setDeleteConfirm(null)} className="px-3 py-1 bg-gray-200 text-gray-700 text-xs rounded-lg hover:bg-gray-300 font-medium">Cancel</button>
+                            </div>
+                          ) : (
+                            <button onClick={() => setDeleteConfirm(agent._id)} className="px-3 py-1.5 text-red-600 border border-red-200 rounded-lg hover:bg-red-50 text-xs font-semibold transition">Delete</button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );
@@ -184,6 +241,63 @@ export default function AgentsPage() {
           </div>
         )}
       </div>
+
+      {passwordAgent && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
+            <h3 className="text-lg font-bold text-gray-900 mb-1">Change Password</h3>
+            <p className="text-sm text-gray-500 mb-5">
+              Set a new password for <span className="font-semibold text-blue-700">{passwordAgent.username}</span>.
+              They will be logged out from all devices.
+            </p>
+            <form onSubmit={handlePasswordChange} className="space-y-4">
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">New Password</label>
+                <input
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:outline-none focus:border-blue-500 text-sm text-gray-900"
+                  placeholder="Min. 6 characters"
+                  required
+                  minLength={6}
+                  autoComplete="new-password"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Confirm Password</label>
+                <input
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:outline-none focus:border-blue-500 text-sm text-gray-900"
+                  placeholder="Re-enter password"
+                  required
+                  minLength={6}
+                  autoComplete="new-password"
+                />
+              </div>
+              {passwordError && <p className="text-red-600 text-sm font-medium">{passwordError}</p>}
+              <div className="flex items-center gap-3 pt-2">
+                <button
+                  type="submit"
+                  disabled={passwordLoading}
+                  className="flex-1 px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl transition disabled:opacity-60 text-sm"
+                >
+                  {passwordLoading ? 'Updating...' : 'Update Password'}
+                </button>
+                <button
+                  type="button"
+                  onClick={closePasswordModal}
+                  className="px-4 py-3 bg-gray-200 hover:bg-gray-300 text-gray-700 font-semibold rounded-xl transition text-sm"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

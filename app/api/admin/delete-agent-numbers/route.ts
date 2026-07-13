@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import connectDB from '@/lib/mongodb';
 import PhoneNumber from '@/models/PhoneNumber';
+import { verifyAdminPassword } from '@/lib/admin';
 
 export async function POST(req: NextRequest) {
   try {
@@ -24,8 +25,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing agentUsername or password' }, { status: 400 });
     }
 
-    const adminPassword = process.env.ADMIN_PASSWORD || 'admin123';
-    if (password !== adminPassword) {
+    const valid = await verifyAdminPassword(password);
+    if (!valid) {
       return NextResponse.json({ error: 'Invalid admin password' }, { status: 401 });
     }
 

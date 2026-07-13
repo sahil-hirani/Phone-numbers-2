@@ -29,7 +29,10 @@ export default function AgentLayout({ children }: { children: React.ReactNode })
   const [counts, setCounts] = useState<Counts>({ ftd: 0, connected: 0, notConnected: 0, active: 0, noActive: 0 });
 
   useEffect(() => {
-    if (status === 'unauthenticated') router.push('/login');
+    if (status === 'unauthenticated' || (status === 'authenticated' && !session?.user)) {
+      signOut({ callbackUrl: '/login' });
+      return;
+    }
     if (status === 'authenticated' && (session?.user as any)?.role === 'admin') router.push('/admin');
   }, [status, session, router]);
 

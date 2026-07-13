@@ -11,6 +11,7 @@ import {
   RiAddCircleLine,
   RiMenuLine,
   RiLogoutBoxLine,
+  RiLockPasswordLine,
 } from 'react-icons/ri';
 
 const navItems = [
@@ -24,11 +25,51 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const router = useRouter();
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordLoading, setPasswordLoading] = useState(false);
+  const [passwordError, setPasswordError] = useState('');
 
   useEffect(() => {
-    if (status === 'unauthenticated') router.push('/login');
+    if (status === 'unauthenticated' || (status === 'authenticated' && !session?.user)) {
+      signOut({ callbackUrl: '/login' });
+      return;
+    }
     if (status === 'authenticated' && (session?.user as any)?.role === 'agent') router.push('/agent');
   }, [status, session, router]);
+
+  async function handleAdminPasswordChange(e: React.FormEvent) {
+    e.preventDefault();
+    setPasswordError('');
+
+    if (newPassword.length < 6) {
+      setPasswordError('Password must be at least 6 characters');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setPasswordError('Passwords do not match');
+      return;
+    }
+
+    setPasswordLoading(true);
+    const res = await fetch('/api/admin/change-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ newPassword }),
+    });
+    const data = await res.json();
+    setPasswordLoading(false);
+
+    if (res.ok) {
+      setShowPasswordModal(false);
+      setNewPassword('');
+      setConfirmPassword('');
+      signOut({ callbackUrl: '/login' });
+    } else {
+      setPasswordError(data.error || 'Failed to update password');
+    }
+  }
 
   if (status === 'loading') {
     return (
@@ -89,6 +130,13 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         {/* Bottom */}
         <div className="p-3 border-t border-blue-600 space-y-2">
           <button
+            onClick={() => { setShowPasswordModal(true); setPasswordError(''); setNewPassword(''); setConfirmPassword(''); }}
+            className="flex items-center gap-3 px-3 py-2.5 w-full rounded-xl text-blue-200 hover:bg-blue-600/60 transition text-sm"
+          >
+            <RiLockPasswordLine size={20} className="shrink-0" />
+            {sidebarOpen && <span>Change Password</span>}
+          </button>
+          <button
             onClick={() => setSidebarOpen(!sidebarOpen)}
             className="flex items-center gap-3 px-3 py-2.5 w-full rounded-xl text-blue-200 hover:bg-blue-600/60 transition text-sm"
           >
@@ -119,6 +167,62 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         </header>
         <main className="flex-1 overflow-y-auto p-6">{children}</main>
       </div>
+
+      {showPasswordModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
+            <h3 className="text-lg font-bold text-gray-900 mb-1">Change Admin Password</h3>
+            <p className="text-sm text-gray-500 mb-5">
+              You will be logged out from all devices after changing your password.
+            </p>
+            <form onSubmit={handleAdminPasswordChange} className="space-y-4">
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">New Password</label>
+                <input
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:outline-none focus:border-blue-500 text-sm text-gray-900"
+                  placeholder="Min. 6 characters"
+                  required
+                  minLength={6}
+                  autoComplete="new-password"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Confirm Password</label>
+                <input
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:outline-none focus:border-blue-500 text-sm text-gray-900"
+                  placeholder="Re-enter password"
+                  required
+                  minLength={6}
+                  autoComplete="new-password"
+                />
+              </div>
+              {passwordError && <p className="text-red-600 text-sm font-medium">{passwordError}</p>}
+              <div className="flex items-center gap-3 pt-2">
+                <button
+                  type="submit"
+                  disabled={passwordLoading}
+                  className="flex-1 px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl transition disabled:opacity-60 text-sm"
+                >
+                  {passwordLoading ? 'Updating...' : 'Update Password'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowPasswordModal(false)}
+                  className="px-4 py-3 bg-gray-200 hover:bg-gray-300 text-gray-700 font-semibold rounded-xl transition text-sm"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

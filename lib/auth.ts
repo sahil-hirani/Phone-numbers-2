@@ -2,11 +2,9 @@ import { NextAuthOptions } from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
 import connectDB from './mongodb';
 import Agent from '@/models/Agent';
+import { getOrCreateAdmin } from './admin';
 import bcrypt from 'bcryptjs';
 
-// Validate required environment variables
-const adminUsername = process.env.ADMIN_USERNAME;
-const adminPassword = process.env.ADMIN_PASSWORD;
 const nextAuthSecret = process.env.NEXTAUTH_SECRET;
 
 if (!nextAuthSecret) {
@@ -23,19 +21,29 @@ export const authOptions: NextAuthOptions = {
       },
       async authorize(credentials) {
         try {
-          // Check admin first
+          await connectDB();
+
+          // Check admin (DB-backed, seeded from env on first login)
+          const admin = await getOrCreateAdmin();
           if (
-            adminUsername &&
-            adminPassword &&
-            credentials?.username === adminUsername &&
-            credentials?.password === adminPassword
+            admin &&
+            credentials?.username?.toLowerCase().trim() === admin.username &&
+            credentials?.password
           ) {
-            return { id: '1', name: 'Admin', email: 'admin@system.com', role: 'admin' };
+            const valid = await bcrypt.compare(credentials.password, admin.password);
+            if (valid) {
+              return {
+                id: admin._id.toString(),
+                name: 'Admin',
+                email: 'admin@system.com',
+                role: 'admin',
+                tokenVersion: admin.tokenVersion,
+              };
+            }
           }
 
           // Check agent
           if (credentials?.username && credentials?.password) {
-            await connectDB();
             const agent = await Agent.findOne({ username: credentials.username.toLowerCase() });
             if (agent) {
               const valid = await bcrypt.compare(credentials.password, agent.password);
@@ -46,6 +54,7 @@ export const authOptions: NextAuthOptions = {
                   email: `${agent.username}@agent.local`,
                   role: 'agent',
                   agentUsername: agent.username,
+                  tokenVersion: agent.tokenVersion ?? 0,
                 };
               }
             }
@@ -54,7 +63,6 @@ export const authOptions: NextAuthOptions = {
           return null;
         } catch (error) {
           console.error('Authentication error:', error);
-          // Return null instead of throwing to avoid server error
           return null;
         }
       },
@@ -67,10 +75,39 @@ export const authOptions: NextAuthOptions = {
       if (user) {
         token.role = (user as any).role;
         token.agentUsername = (user as any).agentUsername;
+        token.tokenVersion = (user as any).tokenVersion ?? 0;
+        return token;
       }
+
+      // Validate token version on every JWT refresh to invalidate stale sessions
+      try {
+        await connectDB();
+
+        if (token.role === 'admin' && token.sub) {
+          const admin = await getOrCreateAdmin();
+          if (!admin || admin.tokenVersion !== token.tokenVersion) {
+            return { ...token, error: 'SessionExpired' as const };
+          }
+        }
+
+        if (token.role === 'agent' && token.sub) {
+          const agent = await Agent.findById(token.sub).select('tokenVersion');
+          if (!agent || (agent.tokenVersion ?? 0) !== token.tokenVersion) {
+            return { ...token, error: 'SessionExpired' as const };
+          }
+        }
+      } catch (error) {
+        console.error('JWT validation error:', error);
+        return { ...token, error: 'SessionExpired' as const };
+      }
+
       return token;
     },
     async session({ session, token }) {
+      if (token.error === 'SessionExpired') {
+        return { ...session, user: undefined, expires: new Date(0).toISOString() };
+      }
+
       if (session.user) {
         (session.user as any).role = token.role;
         (session.user as any).agentUsername = token.agentUsername;
